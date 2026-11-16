@@ -1,0 +1,99 @@
+# hydrooj-avatar
+
+Hydro OJ 本地头像裁剪上传与图片自动压缩插件。用户可以上传 JPG、PNG、WebP 和苹果 HEIC/HEIF 照片，选择方形区域作为头像；出题时粘贴或上传的大图片会在保存前自动压缩，减少存储占用和页面加载流量。
+
+## 环境要求
+
+- Node.js 22 或更高版本。
+- Hydro 5.1.0 或更高版本。
+- 默认界面插件 `@hydrooj/ui-default` 4.59.0 或更高版本。
+
+图片处理依赖会在安装插件时自动获取，无需另外安装 HEIC 转换工具。
+
+## 作为 Hydro 插件安装
+
+以下命令均使用运行 Hydro 的用户执行。
+
+### 方式 A：从 npm 安装
+
+```sh
+hydrooj install hydrooj-avatar
+pm2 restart hydrooj
+```
+
+`hydrooj install` 需要 Yarn 1。安装完成后会自动注册插件，重启 Hydro 即可使用。
+
+### 方式 B：从 GitHub 安装
+
+```sh
+git clone https://github.com/HuParry/hydrooj-avatar.git ~/.hydro/addons/hydrooj-avatar
+cd ~/.hydro/addons/hydrooj-avatar
+yarn install
+hydrooj addon add ~/.hydro/addons/hydrooj-avatar
+pm2 restart hydrooj
+```
+
+插件的前端脚本和模板由 Hydro 启动时自动加载，无需单独构建或修改 Hydro 源码。
+
+## 更新插件
+
+从 npm 安装的插件，重新执行安装命令即可更新：
+
+```sh
+hydrooj install hydrooj-avatar
+pm2 restart hydrooj
+```
+
+从 GitHub 安装的插件，在插件目录拉取更新并安装依赖：
+
+```sh
+cd ~/.hydro/addons/hydrooj-avatar
+git pull
+yarn install
+pm2 restart hydrooj
+```
+
+## 在 Hydro 中使用
+
+### 上传头像
+
+1. 打开账户设置页面 `/home/settings/account`。
+2. 在头像区域选择本地图片，自动打开裁剪弹窗。
+3. 拖动方形选区选择位置，用滑块或右下角手柄调整大小；右侧实时显示方形和圆形头像预览。支持触屏拖动，也可用方向键微调位置，按住 Shift 加速移动。
+4. 点击“确认并保存”，成功后页面自动刷新。点击“取消”或按 Esc 退出，保留当前头像。
+
+头像区域直接显示文件选择控件，只提供本地上传。支持 JPG、JPEG、PNG、WebP、HEIC/HEIF，原图最大 8 MiB。裁剪界面使用 Hydro 原生对话框和按钮，适配桌面与手机。
+
+HEIC/HEIF 照片也可以直接选择并预览，照片方向会自动校正。确认后，头像按选区裁剪为正方形，最大 256 × 256 px，小图不放大，统一保存为不超过 100 KiB 的 WebP。
+
+预览或取消操作不会更换当前头像。安装插件前已有的头像会继续保留，需要重新上传才会进行裁剪和压缩。
+
+### 题面图片与附件
+
+正常在题面编辑器中粘贴图片，或在文件管理页面上传图片即可，无需额外操作。插件也会处理个人文件、比赛附件和导入题包时保存的题目图片附件。
+
+- 不超过 500 KB 的图片保持原内容。
+- 超限 JPG/JPEG、PNG、WebP、GIF、AVIF 优先优化编码，仍超限时等比例缩小，保存结果不超过 500 KB。
+- 保留普通图片的文件名、格式和引用地址；GIF 和动画 WebP 保留动画。
+- 超限 HEIC/HEIF、SVG、BMP、TIFF、ICO、JXL 等暂不能保留原格式压缩的图片会提示拒绝保存，可先转换为支持的格式。头像上传独立支持 HEIC/HEIF 转 WebP。
+
+判题测试数据、提交代码和非图片文件保持原样。插件只处理上传保存过程，不会自动扫描或重写历史文件。
+
+## 处理限制
+
+| 项目 | 头像 | 普通图片 |
+| --- | --- | --- |
+| 原图大小上限 | 8 MiB | 20 MiB |
+| 保存大小上限 | 100 KiB | 500 KB |
+| 保存尺寸 | 正方形，最大 256 × 256 px | 根据压缩结果等比例调整 |
+| 保存格式 | WebP | 保留原格式 |
+
+超限普通图片处理时，单帧最多 5000 万像素，单边不超过 16384 px；动画最多 500 帧，全部帧合计不超过 1 亿像素。
+
+图片在服务器接收后自动处理。遇到处理繁忙、超时或图片无法解码时，页面会显示错误提示，可稍后重试或更换图片；压缩失败的超限图片不会保存。
+
+已有服务器请求大小限制仍然生效。直接通过外部工具写入磁盘的图片不会触发压缩。
+
+## 许可
+
+本插件以 [AGPL-3.0-or-later](LICENSE) 发布。

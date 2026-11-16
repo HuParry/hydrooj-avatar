@@ -1,0 +1,21 @@
+{% extends "layout/home_base.html" %}
+{% block home_content %}
+{% if category == "account" %}
+  <div class="section" id="upload_avatar" data-heading-extract-to="#menu-item-home_account" style="nojs--hide">
+    <div class="section__header">
+      <h1 class="section__title" id="avatar" data-heading>{{ _('Avatar') }}</h1>
+    </div>
+    <div class="section__body typo">
+      <p>选取本地图片并裁剪头像，支持 JPG、PNG、WebP、HEIC/HEIF，图片最大 8 MiB</p>
+    </div>
+    <div class="section__body">
+      <img width="128px" height="128px" src="{{ avatarUrl(current.avatar, 128) }}" alt="{{ current.uname }}">
+      <div class="changeAvatar"></div>
+      <button class="change-avatar button rounded primary" style="display:none">{{ _('Change avatar') }}</button>
+    </div>
+  </div>
+{% endif %}
+<div class="section" data-heading-extract-to="#menu-item-home_{{ category }}">
+  {% include "partials/setting.html" %}
+</div>
+{% endblock %}

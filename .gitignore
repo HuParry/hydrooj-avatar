@@ -1,0 +1,10 @@
+# These JavaScript files are plugin sources, not generated workspace output.
+!index.js
+!avatar/*.js
+!image-compress/*.js
+
+node_modules/
+*.tgz
+coverage/
+.DS_Store
+*.log
