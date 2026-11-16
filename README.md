@@ -2,54 +2,25 @@
 
 Hydro OJ 本地头像裁剪上传与图片自动压缩插件。用户可以上传 JPG、PNG、WebP 和苹果 HEIC/HEIF 照片，选择方形区域作为头像；出题时粘贴或上传的大图片会在保存前自动压缩，减少存储占用和页面加载流量。
 
-## 环境要求
-
-- Node.js 22 或更高版本。
-- Hydro 5.1.0 或更高版本。
-- 默认界面插件 `@hydrooj/ui-default` 4.59.0 或更高版本。
-
-图片处理依赖会在安装插件时自动获取，无需另外安装 HEIC 转换工具。
-
 ## 作为 Hydro 插件安装
 
 以下命令均使用运行 Hydro 的用户执行。
-
-### 方式 A：从 npm 安装
 
 ```sh
 hydrooj install hydrooj-avatar
 pm2 restart hydrooj
 ```
 
-`hydrooj install` 需要 Yarn 1。安装完成后会自动注册插件，重启 Hydro 即可使用。
-
-### 方式 B：从 GitHub 安装
-
-```sh
-git clone https://github.com/HuParry/hydrooj-avatar.git ~/.hydro/addons/hydrooj-avatar
-cd ~/.hydro/addons/hydrooj-avatar
-yarn install
-hydrooj addon add ~/.hydro/addons/hydrooj-avatar
-pm2 restart hydrooj
-```
+安装完成后会自动注册插件，重启 Hydro 即可使用。
 
 插件的前端脚本和模板由 Hydro 启动时自动加载，无需单独构建或修改 Hydro 源码。
 
 ## 更新插件
 
-从 npm 安装的插件，重新执行安装命令即可更新：
+重新执行安装命令即可更新：
 
 ```sh
 hydrooj install hydrooj-avatar
-pm2 restart hydrooj
-```
-
-从 GitHub 安装的插件，在插件目录拉取更新并安装依赖：
-
-```sh
-cd ~/.hydro/addons/hydrooj-avatar
-git pull
-yarn install
 pm2 restart hydrooj
 ```
 
@@ -57,16 +28,22 @@ pm2 restart hydrooj
 
 ### 上传头像
 
-1. 打开账户设置页面 `/home/settings/account`。
-2. 在头像区域选择本地图片，自动打开裁剪弹窗。
-3. 拖动方形选区选择位置，用滑块或右下角手柄调整大小；右侧实时显示方形和圆形头像预览。支持触屏拖动，也可用方向键微调位置，按住 Shift 加速移动。
-4. 点击“确认并保存”，成功后页面自动刷新。点击“取消”或按 Esc 退出，保留当前头像。
+1. 打开账户设置页面 `/home/settings/account`，可以看到头像设置的界面：
 
-头像区域直接显示文件选择控件，只提供本地上传。支持 JPG、JPEG、PNG、WebP、HEIC/HEIF，原图最大 8 MiB。裁剪界面使用 Hydro 原生对话框和按钮，适配桌面与手机。
+![img.png](docs/1.png)
 
-HEIC/HEIF 照片也可以直接选择并预览，照片方向会自动校正。确认后，头像按选区裁剪为正方形，最大 256 × 256 px，小图不放大，统一保存为不超过 100 KiB 的 WebP。
+2. 在头像区域选择合适的本地图片后，会进入到图片裁剪界面：
 
-预览或取消操作不会更换当前头像。安装插件前已有的头像会继续保留，需要重新上传才会进行裁剪和压缩。
+拖动方形选区选择位置，用滑块或右下角手柄调整大小；右侧实时显示方形和圆形头像预览。支持触屏拖动，也可用方向键微调位置，按住 Shift 加速移动。
+![img.png](docs/2.png)
+
+3. 点击“确认并保存”，成功后页面自动刷新。点击“取消”或按 Esc 退出，保留当前头像：
+
+![img.png](docs/3.png)
+
+头像区域直接显示文件选择控件，只提供本地上传。支持 JPG、JPEG、PNG、WebP、HEIC/HEIF，原图最大 8 MiB。
+
+安装插件前已有的头像会继续保留，需要重新上传才会进行裁剪和压缩。
 
 ### 题面图片与附件
 
