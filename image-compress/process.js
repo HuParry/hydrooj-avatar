@@ -3,7 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
-const { LIMIT, MAX_INPUT, failure } = require('./policy');
+const { LIMIT, MAX_INPUT, failure, needsConversion } = require('./policy');
 
 exports.createProcessor = ({ waitMs = 30000, workMs = 45000, maxQueued = 3 } = {}) => {
   let active = false;
@@ -62,10 +62,10 @@ exports.createProcessor = ({ waitMs = 30000, workMs = 45000, maxQueued = 3 } = {
     return Buffer.concat(chunks);
   }
 
-  function convert(data, filename) {
+  function convert(data, filename, prepare = false) {
     return new Promise((resolve, reject) => {
       const worker = new Worker(path.join(__dirname, 'worker.js'), {
-        workerData: { data, filename },
+        workerData: { data, filename, convert: prepare },
         execArgv: [],
         resourceLimits: { maxOldGenerationSizeMb: 128 },
       });
@@ -85,7 +85,7 @@ exports.createProcessor = ({ waitMs = 30000, workMs = 45000, maxQueued = 3 } = {
         if (result.error) return finish(failure(result.error));
         const output = Buffer.from(result.data || []);
         if (!output.length || output.length > LIMIT) return finish(failure('图片压缩结果未通过 500 KB 校验。'));
-        return finish(null, output);
+        return finish(null, prepare ? { data: output, filename: result.filename } : output);
       });
       worker.once('error', () => finish(failure('图片处理失败，请检查图片或稍后重试。')));
       worker.once('exit', () => {
@@ -95,6 +95,10 @@ exports.createProcessor = ({ waitMs = 30000, workMs = 45000, maxQueued = 3 } = {
   }
 
   return {
+    async prepare(file, filename) {
+      if (!needsConversion(filename)) return { data: await this.compress(file, filename), filename };
+      return enqueue(async () => convert(await readInput(file), filename, true));
+    },
     async compress(file, filename) {
       if (stopped) throw failure('图片压缩服务正在重载，请稍后重试。');
       if (Buffer.isBuffer(file) && file.length <= LIMIT) return file;

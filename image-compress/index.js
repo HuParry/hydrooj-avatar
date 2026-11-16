@@ -35,7 +35,14 @@ exports.apply = ctx => {
     const filename = handler.args.filename || file.originalFilename;
     if (!isImageName(filename)) return;
     if (kind === 'user') handler.checkPriv(PRIV.PRIV_CREATE_FILE);
-    const output = await compress(file.filepath, filename);
+    let prepared;
+    try { prepared = await processor.prepare(file.filepath, filename); }
+    catch (error) { throw new ValidationError('file', '', error.imageCompression ? error.message : '图片无法解码或转换，请更换图片后重试。'); }
+    const output = prepared.data;
+    handler.args.filename = prepared.filename;
+    if (handler.request.body) handler.request.body.filename = prepared.filename;
+    file.originalFilename = prepared.filename;
+    if (handler.response) handler.response.body = { ...handler.response.body, imageFilename: prepared.filename };
     if (Buffer.isBuffer(output)) {
       await fs.writeFile(file.filepath, output);
       file.size = output.length;

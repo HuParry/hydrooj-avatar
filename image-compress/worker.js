@@ -3,26 +3,39 @@
 const path = require('node:path');
 const { parentPort, workerData } = require('node:worker_threads');
 const sharp = require('sharp');
-const { LIMIT, MAX_PIXELS, MAX_TOTAL_PIXELS, MAX_FRAMES, failure } = require('./policy');
+const { LIMIT, MAX_PIXELS, MAX_TOTAL_PIXELS, MAX_FRAMES, failure, needsConversion, convertedFilename } = require('./policy');
 sharp.concurrency(1);
 sharp.cache(false);
 
 const expected = {
-  '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.apng': 'png',
+  '.jpg': 'jpeg', '.jpeg': 'jpeg', '.jpe': 'jpeg', '.jfif': 'jpeg', '.png': 'png', '.apng': 'png',
   '.webp': 'webp', '.gif': 'gif', '.avif': 'avif',
 };
 const formatOf = meta => meta.format === 'heif' && meta.compression === 'av1' ? 'avif' : meta.format;
 
 async function compress() {
   const extension = path.extname(workerData.filename || '').toLowerCase();
-  const format = expected[extension];
+  const converted = workerData.convert && needsConversion(workerData.filename);
+  const format = converted ? 'webp' : expected[extension];
   if (!format) throw failure('此图片格式暂不支持保留原格式压缩，请先转换为 JPG、PNG、WebP、GIF 或 AVIF，并控制在 500 KB 内。');
   const input = Buffer.from(workerData.data);
-  const before = await sharp(input, { animated: true, limitInputPixels: MAX_TOTAL_PIXELS, failOn: 'warning' }).metadata();
-  if (formatOf(before) !== format) throw failure('图片内容与文件扩展名不一致，请使用正确的图片文件。');
-  const pages = before.pages || 1;
+  if (!converted && format === 'png' && input.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    for (let offset = 8; offset + 12 <= input.length;) {
+      const length = input.readUInt32BE(offset);
+      if (length > input.length - offset - 12) break;
+      if (input.toString('ascii', offset + 4, offset + 8) === 'acTL' && length >= 8 && input.readUInt32BE(offset + 8) > 1) {
+        throw failure('暂不支持保留 APNG 动画压缩，请先转为 GIF 或动画 WebP，或将原文件控制在 500 KB 内。');
+      }
+      offset += length + 12;
+    }
+  }
+  const source = converted ? await require('./decode').openImage(input, extension)
+    : sharp(input, { animated: true, limitInputPixels: MAX_TOTAL_PIXELS, failOn: 'warning' });
+  const before = await source.metadata();
+  if (!converted && formatOf(before) !== format) throw failure('图片内容与文件扩展名不一致，请使用正确的图片文件。');
+  const pages = converted ? 1 : before.pages || 1;
   const width = before.width;
-  const height = before.pageHeight || before.height;
+  const height = converted ? before.height : before.pageHeight || before.height;
   if (!width || !height || width > 16384 || height > 16384 || width * height > MAX_PIXELS
     || width * height * pages > MAX_TOTAL_PIXELS || pages > MAX_FRAMES) {
     throw failure('图片尺寸或动画帧数过大：单帧最多 5000 万像素、动画总计最多 1 亿像素和 500 帧。');
@@ -43,7 +56,7 @@ async function compress() {
     avif: { quality: 65, effort: 2 },
   }[format];
   const encode = async (targetWidth, opts = options) => {
-    let image = sharp(input, { animated: pages > 1, limitInputPixels: MAX_TOTAL_PIXELS, failOn: 'warning' }).autoOrient();
+    let image = source.clone().autoOrient();
     if (targetWidth < orientedWidth) image = image.resize({ width: targetWidth, withoutEnlargement: true });
     return image[format](opts).toBuffer();
   };
@@ -93,22 +106,22 @@ async function compress() {
     }
     output = best?.data;
   }
-  if (!output || output.length >= input.length) throw failure('无法将图片压缩到 500 KB 内，请先手动缩小图片。');
+  if (!output || (!converted && output.length >= input.length)) throw failure('无法将图片压缩到 500 KB 内，请先手动缩小图片。');
   const after = await sharp(output, { animated: true, limitInputPixels: MAX_TOTAL_PIXELS }).metadata();
   if (formatOf(after) !== format || (after.pages || 1) !== pages) throw failure('图片格式或动画帧数校验失败，未保存图片。');
   if (pages > 1 && (JSON.stringify(before.delay) !== JSON.stringify(after.delay) || before.loop !== after.loop)) {
     throw failure('动画播放时间校验失败，未保存图片。');
   }
   if (before.hasAlpha && !after.hasAlpha) {
-    const stats = await sharp(input, { animated: pages > 1, limitInputPixels: MAX_TOTAL_PIXELS }).stats();
+    const stats = await source.clone().stats();
     if (stats.channels[stats.channels.length - 1].min < 255) throw failure('图片透明度校验失败，未保存图片。');
   }
   await sharp(output, { animated: pages > 1, limitInputPixels: MAX_TOTAL_PIXELS, failOn: 'warning' }).stats();
-  return output;
+  return { data: output, filename: converted ? convertedFilename(workerData.filename) : workerData.filename };
 }
 
 compress().then(
-  data => parentPort.postMessage({ data }),
+  result => parentPort.postMessage(result),
   error => parentPort.postMessage({
     error: error.imageCompression ? error.message : '图片无法正常解码或压缩，请检查文件是否完整及分辨率是否过大。',
   }),
