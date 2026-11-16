@@ -31,46 +31,69 @@ async function compress() {
     throw failure('此动画格式无法在保留动画的情况下压缩，请先转换为 GIF 或 WebP。');
   }
   const orientedWidth = before.orientation >= 5 ? height : width;
-  let targetWidth = orientedWidth;
-  let output;
-  let options;
-  const build = () => {
+  const orientedHeight = before.orientation >= 5 ? width : height;
+  const options = {
+    jpeg: { quality: 85, mozjpeg: true },
+    png: { compressionLevel: 9, palette: true, quality: 90, colours: 256, effort: 4 },
+    gif: {
+      colours: 256, effort: 3, dither: 0.5, keepDuplicateFrames: true,
+      interFrameMaxError: 0, interPaletteMaxError: 0, loop: before.loop, delay: before.delay,
+    },
+    webp: { quality: 85, effort: 2, alphaQuality: 100, loop: before.loop, delay: before.delay },
+    avif: { quality: 65, effort: 2 },
+  }[format];
+  const encode = async (targetWidth, opts = options) => {
     let image = sharp(input, { animated: pages > 1, limitInputPixels: MAX_TOTAL_PIXELS, failOn: 'warning' }).autoOrient();
     if (targetWidth < orientedWidth) image = image.resize({ width: targetWidth, withoutEnlargement: true });
-    return image;
+    return image[format](opts).toBuffer();
   };
-  const encode = async opts => {
-    options = opts;
-    output = await build()[format](opts).toBuffer();
-    return output.length <= LIMIT;
-  };
-  let done = false;
-  if (format === 'jpeg') done = await encode({ quality: 85, mozjpeg: true });
-  if (format === 'png') {
-    done = await encode({ compressionLevel: 9, adaptiveFiltering: true });
-    if (!done) done = await encode({ compressionLevel: 9, palette: true, quality: 90, colours: 256, effort: 4 });
-  }
-  if (format === 'gif') {
-    for (const colours of [256, 128, 64]) {
-      done = await encode({
-        colours, effort: 7, dither: 0.5, keepDuplicateFrames: true,
-        interFrameMaxError: 0, interPaletteMaxError: 0,
-        loop: before.loop, delay: before.delay,
-      });
-      if (done) break;
-    }
-  }
-  if (format === 'webp') done = await encode({ quality: 85, effort: 4, alphaQuality: 100, loop: before.loop, delay: before.delay });
-  if (format === 'avif') done = await encode({ quality: 65, effort: 4 });
 
-  for (let attempt = 0; !done && attempt < 16; attempt++) {
-    const factor = Math.min(0.9, Math.max(0.5, Math.sqrt(470000 / output.length) * 0.96));
-    const next = Math.max(16, Math.floor(targetWidth * factor));
-    if (next === targetWidth) break;
-    targetWidth = next;
-    done = await encode(options);
+  // Keep a cheap lossless attempt for small true-colour PNGs, such as diagrams.
+  let output;
+  if (format === 'png' && !before.isPalette && width * height <= 1000000) {
+    const lossless = await encode(orientedWidth, { compressionLevel: 6 });
+    if (lossless.length <= LIMIT) output = lossless;
   }
-  if (!done || output.length >= input.length) throw failure('无法将图片压缩到 500 KB 内，请先手动缩小图片。');
+
+  if (!output) {
+    // Estimate encoded bytes per pixel at a bounded size, including every animation frame.
+    const needsProbe = width * height * pages > 2000000;
+    const probeScale = Math.min(1, Math.sqrt(500000 / (width * height * pages)),
+      1280 / Math.max(orientedWidth, orientedHeight));
+    let targetWidth = needsProbe ? Math.max(1, Math.floor(orientedWidth * probeScale)) : orientedWidth;
+    let candidate = await encode(targetWidth);
+    let encodedWidth = targetWidth;
+    let best = candidate.length <= LIMIT ? { data: candidate, width: targetWidth } : null;
+    let upperWidth = orientedWidth + 1;
+    if (needsProbe) {
+      // A small preview loses fine detail, so bytes usually grow more slowly than pixel count.
+      targetWidth = Math.max(1, Math.min(orientedWidth,
+        Math.floor(targetWidth * (460000 / candidate.length) ** (1 / 1.75))));
+    }
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (targetWidth !== encodedWidth) {
+        candidate = await encode(targetWidth);
+        encodedWidth = targetWidth;
+      }
+      if (candidate.length <= LIMIT) {
+        if (!best || targetWidth > best.width) best = { data: candidate, width: targetWidth };
+        if (targetWidth === orientedWidth || candidate.length >= LIMIT * (needsProbe ? 0.85 : 0.6)) break;
+        const next = Math.min(orientedWidth, upperWidth - 1,
+          Math.floor(targetWidth * Math.sqrt(470000 / candidate.length)));
+        if (next <= targetWidth * 1.05) break;
+        targetWidth = next;
+      } else {
+        upperWidth = targetWidth;
+        if (targetWidth === 1) break;
+        const factor = Math.min(0.9, Math.max(0.25, Math.sqrt(460000 / candidate.length) * 0.95));
+        const next = Math.max(1, best ? best.width + 1 : 1, Math.floor(targetWidth * factor));
+        if (next >= targetWidth || (best && next <= best.width * 1.05)) break;
+        targetWidth = next;
+      }
+    }
+    output = best?.data;
+  }
+  if (!output || output.length >= input.length) throw failure('无法将图片压缩到 500 KB 内，请先手动缩小图片。');
   const after = await sharp(output, { animated: true, limitInputPixels: MAX_TOTAL_PIXELS }).metadata();
   if (formatOf(after) !== format || (after.pages || 1) !== pages) throw failure('图片格式或动画帧数校验失败，未保存图片。');
   if (pages > 1 && (JSON.stringify(before.delay) !== JSON.stringify(after.delay) || before.loop !== after.loop)) {

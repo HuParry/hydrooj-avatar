@@ -1,6 +1,6 @@
 {
   "name": "hydrooj-avatar",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Hydro OJ square avatar cropping with HEIC support and automatic image attachment compression",
   "main": "index.js",
   "type": "commonjs",
@@ -28,6 +28,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.cjs",
+    "benchmark": "node test/benchmark.cjs",
     "check:publish": "npm test && npm pack --dry-run --ignore-scripts --workspaces=false"
   },
   "dependencies": {

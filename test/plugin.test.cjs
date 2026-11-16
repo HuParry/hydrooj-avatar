@@ -177,6 +177,64 @@ test('animated GIF keeps every frame, delay and loop', async () => {
   assert.equal(after.loop, before.loop);
 });
 
+test('AVIF compression retains format, transparency and bounded dimensions', async () => {
+  const source = await sharp(crypto.randomBytes(800 * 600 * 4), {
+    raw: { width: 800, height: 600, channels: 4 },
+  }).avif({ quality: 100, effort: 0 }).toBuffer();
+  assert.ok(source.length > 500000);
+  const result = await processor.compress(source, 'transparent.avif');
+  const after = await sharp(result).metadata();
+  assert.equal(after.format, 'heif');
+  assert.equal(after.compression, 'av1');
+  assert.equal(after.hasAlpha, true);
+  assert.ok(result.length <= 500000 && after.width <= 800 && after.height <= 600);
+});
+
+test('animated transparent WebP retains all frames, timing, loop and alpha', async () => {
+  const delay = [50, 70, 90, 110, 130, 150];
+  const source = await sharp(crypto.randomBytes(320 * 240 * delay.length * 4), {
+    raw: { width: 320, height: 240 * delay.length, channels: 4, pageHeight: 240 },
+  }).webp({ lossless: true, loop: 3, delay }).toBuffer();
+  assert.ok(source.length > 500000);
+  const before = await sharp(source, { animated: true }).metadata();
+  const result = await processor.compress(source, 'transparent-animation.webp');
+  const after = await sharp(result, { animated: true }).metadata();
+  assert.equal(after.format, 'webp');
+  assert.equal(after.pages, before.pages);
+  assert.deepEqual(after.delay, before.delay);
+  assert.equal(after.loop, before.loop);
+  assert.equal(after.hasAlpha, true);
+  assert.ok(result.length <= 500000);
+});
+
+test('large compressible diagrams retain their full dimensions after size estimation', async () => {
+  const source = await sharp({ create: { width: 3600, height: 1800, channels: 4, background: '#12345680' } })
+    .png().toBuffer();
+  const result = await processor.compress(pad(source, 600000), 'large-diagram.png');
+  const after = await sharp(result).metadata();
+  assert.equal(after.width, 3600);
+  assert.equal(after.height, 1800);
+  assert.equal(after.hasAlpha, true);
+  assert.ok(result.length <= 500000);
+});
+
+test('attachment size estimation uses oriented geometry for rotated and mirrored photos', async () => {
+  for (const orientation of [2, 6, 7]) {
+    const source = await sharp({ create: { width: 2400, height: 1200, channels: 3, background: 'red' } })
+      .composite([{ input: await sharp({ create: { width: 1200, height: 1200, channels: 3, background: 'blue' } }).png().toBuffer(), left: 1200, top: 0 }])
+      .jpeg().withMetadata({ orientation }).toBuffer();
+    const result = await processor.compress(pad(source, 600000), 'oriented.jpg');
+    const after = await sharp(result).metadata();
+    assert.equal(after.width, orientation >= 5 ? 1200 : 2400);
+    assert.equal(after.height, orientation >= 5 ? 2400 : 1200);
+    const actual = await sharp(result).raw().toBuffer();
+    const expected = await sharp(source).autoOrient().raw().toBuffer();
+    let error = 0;
+    for (let i = 0; i < actual.length; i++) error += Math.abs(actual[i] - expected[i]);
+    assert.ok(error / actual.length < 3, `orientation ${orientation}`);
+  }
+});
+
 test('path and import stream inputs work without altering import source files', async () => {
   const source = pad(samples.small, 600000);
   const file = await imageFile('import.jpg', source);
